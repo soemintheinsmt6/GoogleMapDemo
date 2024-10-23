@@ -1,7 +1,40 @@
+buildscript {
+    ext.kotlin_version = '1.9.10'
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath 'com.android.tools.build:gradle:7.0.4'
+    }
+}
+
+subprojects {
+    project.plugins.withType(org.jetbrains.kotlin.gradle.plugin.KotlinPluginWrapper) {
+        project.extensions.getByType(org.jetbrains.kotlin.gradle.dsl.KotlinJvmOptions).freeCompilerArgs += ['-Xuse-ir']
+        project.plugins.withId("org.jetbrains.kotlin.jvm") {
+            project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                kotlinOptions {
+                    jvmTarget = "1.8"
+                }
+            }
+        }
+    }
+}
+
 allprojects {
     repositories {
         google()
         mavenCentral()
+
+        configurations.all {
+            resolutionStrategy.eachDependency { details ->
+                if (details.requested.group == 'org.jetbrains.kotlin') {
+                    details.useVersion '1.9.10'
+                }
+            }
+        }
     }
 }
 
