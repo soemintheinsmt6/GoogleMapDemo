@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_place/google_place.dart';
 import 'package:flutter_google_map/core/config/app_constants.dart';
+import 'package:flutter_google_map/core/config/env.dart';
 
 class SearchLocationPage extends StatefulWidget {
   const SearchLocationPage({super.key});
@@ -22,7 +23,7 @@ class _SearchLocationPageState extends State<SearchLocationPage> {
   @override
   void initState() {
     super.initState();
-    googlePlace = GooglePlace(google_api_key);
+    googlePlace = GooglePlace(Env.googleApiKey);
   }
 
   void searchLocation(String query) async {

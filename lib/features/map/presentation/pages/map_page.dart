@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_google_map/core/config/app_constants.dart';
+import 'package:flutter_google_map/core/config/env.dart';
 import 'package:flutter_google_map/features/search/presentation/pages/search_location_page.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -42,7 +43,7 @@ class _MapPageState extends State<MapPage> {
 
   void getDirections(LatLng origin, LatLng destination) async {
     var url =
-        'https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&mode=driving&key=$google_api_key';
+        'https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&mode=driving&key=${Env.googleApiKey}';
 
     var response = await http.get(Uri.parse(url));
     var json = jsonDecode(response.body);

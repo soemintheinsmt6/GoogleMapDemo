@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_google_map/core/config/app_constants.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_google_map/features/map/presentation/pages/map_page.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
   runApp(const MyApp());
 }
 

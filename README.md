@@ -34,9 +34,18 @@ lib/
 
 ### 🛠️ Setup
 1. Flutter SDK installed and configured
-2. Add your Google API key (Maps, Places, Directions enabled)
-   - Currently defined in `lib/core/config/app_constants.dart` as `google_api_key`
-   - For production, prefer using runtime configuration (e.g., from env/secrets) rather than committing keys
+2. Create an `.env` file in project root (same level as `pubspec.yaml`):
+
+```bash
+cp .env.example .env # if available, otherwise create manually
+```
+
+Put your Google key there (enable Maps, Places, Directions):
+
+```env
+GOOGLE_API_KEY=your_google_api_key_here
+```
+
 3. Install dependencies:
 
 ```bash
@@ -50,7 +59,8 @@ flutter run
 ```
 
 ### 🔑 API & Permissions
-- Ensure the Google Cloud project has Maps SDK for Android/iOS, Places API, and Directions API enabled
+- Ensure Maps SDK for Android/iOS, Places API, and Directions API are enabled for your key
+- The key is accessed via `Env.googleApiKey` (see `lib/core/config/env.dart`)
 - Android/iOS platform-specific setup is already scaffolded under `android/` and `ios/`
 
 ### 🧭 Notes
