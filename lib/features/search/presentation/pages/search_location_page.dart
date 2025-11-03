@@ -3,16 +3,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_place/google_place.dart';
-import 'package:flutter_google_map/constants.dart';
+import 'package:flutter_google_map/core/config/app_constants.dart';
 
-class SearchLocation extends StatefulWidget {
-  const SearchLocation({super.key});
+class SearchLocationPage extends StatefulWidget {
+  const SearchLocationPage({super.key});
 
   @override
-  State<SearchLocation> createState() => _SearchLocationState();
+  State<SearchLocationPage> createState() => _SearchLocationPageState();
 }
 
-class _SearchLocationState extends State<SearchLocation> {
+class _SearchLocationPageState extends State<SearchLocationPage> {
   late GooglePlace googlePlace;
   List<AutocompletePrediction> _predictions = [];
 
@@ -102,3 +102,5 @@ class _SearchLocationState extends State<SearchLocation> {
     );
   }
 }
+
+

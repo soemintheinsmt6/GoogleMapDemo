@@ -1,21 +1,21 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_google_map/constants.dart';
-import 'package:flutter_google_map/screens/search_location.dart';
+import 'package:flutter_google_map/core/config/app_constants.dart';
+import 'package:flutter_google_map/features/search/presentation/pages/search_location_page.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:signed_spacing_flex/signed_spacing_flex.dart';
-import '../services/location_service.dart';
+import '../../../../core/services/location_service.dart';
 
-class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
+class MapPage extends StatefulWidget {
+  const MapPage({super.key});
 
   @override
-  State<MapScreen> createState() => _MapScreenState();
+  State<MapPage> createState() => _MapPageState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class _MapPageState extends State<MapPage> {
   GoogleMapController? _controller;
   LatLng? _currentPosition;
 
@@ -34,7 +34,9 @@ class _MapScreenState extends State<MapScreen> {
   void addMarker(LatLng destination) {
     _markers.clear();
     _markers.add(
-        Marker(markerId: const MarkerId('destination'), position: destination));
+        const Marker(markerId: MarkerId('destination'), position: LatLng(0,0)));
+    _markers.removeWhere((m) => m.markerId.value == 'destination');
+    _markers.add(Marker(markerId: const MarkerId('destination'), position: destination));
     setState(() {});
   }
 
@@ -134,7 +136,7 @@ class _MapScreenState extends State<MapScreen> {
                         LatLng? destination = await Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const SearchLocation(),
+                            builder: (context) => const SearchLocationPage(),
                           ),
                         );
                         if (destination != null) {
@@ -159,3 +161,5 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 }
+
+
