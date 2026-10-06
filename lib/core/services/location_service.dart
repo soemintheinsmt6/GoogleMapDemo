@@ -2,30 +2,38 @@ import 'package:geolocator/geolocator.dart';
 import 'package:location/location.dart';
 
 class LocationService {
+  final Location _location = Location();
+
+  /// Ensures location services are on and permission is granted, then returns
+  /// the device's current position. Throws a [LocationException] otherwise.
   Future<Position> getCurrentLocation() async {
-    Location location = Location();
-
-    bool serviceEnabled;
-    PermissionStatus permissionGranted;
-
-    serviceEnabled = await location.serviceEnabled();
-    if (!serviceEnabled) {
-      serviceEnabled = await location.requestService();
-      if (!serviceEnabled) {
-        return Future.error('Location services are disabled.');
-      }
+    if (!await _location.serviceEnabled() &&
+        !await _location.requestService()) {
+      throw const LocationException('Location services are disabled.');
     }
 
-    permissionGranted = await location.hasPermission();
-    if (permissionGranted == PermissionStatus.denied) {
-      permissionGranted = await location.requestPermission();
-      if (permissionGranted != PermissionStatus.granted) {
-        return Future.error('Location permissions are denied');
-      }
+    var permission = await _location.hasPermission();
+    if (permission == PermissionStatus.denied) {
+      permission = await _location.requestPermission();
+    }
+    if (permission == PermissionStatus.deniedForever) {
+      throw const LocationException(
+          'Location permission is permanently denied. Enable it in Settings.');
+    }
+    if (permission != PermissionStatus.granted &&
+        permission != PermissionStatus.grantedLimited) {
+      throw const LocationException('Location permission was denied.');
     }
 
     return Geolocator.getCurrentPosition();
   }
 }
 
+class LocationException implements Exception {
+  const LocationException(this.message);
 
+  final String message;
+
+  @override
+  String toString() => message;
+}

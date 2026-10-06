@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:google_place/google_place.dart';
-import 'package:flutter_google_map/core/config/app_constants.dart';
-import 'package:flutter_google_map/core/config/env.dart';
 
+import 'package:flutter/material.dart';
+import 'package:flutter_google_map/core/config/app_constants.dart';
+import 'package:flutter_google_map/features/search/data/places_service.dart';
+import 'package:google_place/google_place.dart';
+
+/// Lets the user search for a place and pops with its `LatLng` when selected.
 class SearchLocationPage extends StatefulWidget {
   const SearchLocationPage({super.key});
 
@@ -14,67 +14,82 @@ class SearchLocationPage extends StatefulWidget {
 }
 
 class _SearchLocationPageState extends State<SearchLocationPage> {
-  late GooglePlace googlePlace;
+  static const _debounceDuration = Duration(milliseconds: 500);
+
+  final _placesService = PlacesService();
+  final _queryController = TextEditingController();
+
   List<AutocompletePrediction> _predictions = [];
-
+  bool _isLoading = false;
+  String? _error;
   Timer? _debounce;
-  final Duration debounceDuration = const Duration(milliseconds: 500);
-
-  @override
-  void initState() {
-    super.initState();
-    googlePlace = GooglePlace(Env.googleApiKey);
-  }
-
-  void searchLocation(String query) async {
-    try {
-      var result = await googlePlace.autocomplete.get(query);
-      if (result != null &&
-          result.predictions != null &&
-          result.predictions!.isNotEmpty) {
-        setState(() {
-          _predictions = result.predictions!;
-        });
-      } else {
-        if (kDebugMode) {
-          print(
-              "No predictions found or error in the response: ${result?.status ?? "Unknown error"}");
-        }
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print("Error occurred while fetching predictions: $e");
-      }
-    }
-  }
-
-  void onSearchChanged(String query) {
-    if (_debounce?.isActive ?? false) _debounce!.cancel();
-
-    _debounce = Timer(debounceDuration, () {
-      if (query.isNotEmpty) {
-        searchLocation(query);
-      }
-    });
-  }
-
-  Future<void> getPlaceDetails(String placeId) async {
-    var details = await googlePlace.details.get(placeId);
-    if (details != null && details.result != null) {
-      double? lat = details.result!.geometry!.location!.lat;
-      double? lng = details.result!.geometry!.location!.lng;
-      LatLng destination =
-          (lat == null || lng == null) ? const LatLng(0, 0) : LatLng(lat, lng);
-      if (mounted) {
-        Navigator.pop(context, destination);
-      }
-    }
-  }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _queryController.dispose();
     super.dispose();
+  }
+
+  void _onQueryChanged(String query) {
+    _debounce?.cancel();
+    if (query.trim().isEmpty) {
+      setState(() {
+        _predictions = [];
+        _error = null;
+        _isLoading = false;
+      });
+      return;
+    }
+    _debounce = Timer(_debounceDuration, () => _search(query.trim()));
+  }
+
+  Future<void> _search(String query) async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    List<AutocompletePrediction> predictions = [];
+    String? error;
+    try {
+      predictions = await _placesService.autocomplete(query);
+    } catch (e) {
+      error = 'Search failed: $e';
+    }
+    // Ignore results for a query the user has since changed.
+    if (!mounted || query != _queryController.text.trim()) return;
+    setState(() {
+      _predictions = predictions;
+      _error = error;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _selectPrediction(AutocompletePrediction prediction) async {
+    final placeId = prediction.placeId;
+    if (placeId == null) return;
+
+    try {
+      final location = await _placesService.getLocation(placeId);
+      if (!mounted) return;
+      if (location == null) {
+        _showSnackBar('No location available for this place.');
+        return;
+      }
+      Navigator.pop(context, location);
+    } catch (e) {
+      if (mounted) _showSnackBar('Could not load place details: $e');
+    }
+  }
+
+  void _clearQuery() {
+    _queryController.clear();
+    _onQueryChanged('');
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -83,25 +98,64 @@ class _SearchLocationPageState extends State<SearchLocationPage> {
       appBar: AppBar(
         foregroundColor: kDefaultThemeColor,
         title: TextField(
-          onChanged: onSearchChanged,
+          controller: _queryController,
+          onChanged: _onQueryChanged,
           autofocus: true,
-          decoration:
-              kTextFieldUnderlineDecoration.copyWith(hintText: 'Search Place'),
+          textInputAction: TextInputAction.search,
+          decoration: kTextFieldUnderlineDecoration.copyWith(
+            hintText: 'Search place',
+            suffixIcon: ListenableBuilder(
+              listenable: _queryController,
+              builder: (context, _) => _queryController.text.isEmpty
+                  ? const SizedBox.shrink()
+                  : IconButton(
+                      icon: const Icon(Icons.clear),
+                      tooltip: 'Clear',
+                      onPressed: _clearQuery,
+                    ),
+            ),
+          ),
         ),
+        bottom: _isLoading
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(2),
+                child: LinearProgressIndicator(minHeight: 2),
+              )
+            : null,
       ),
-      body: ListView.builder(
-        itemCount: _predictions.length,
-        itemBuilder: (context, index) {
-          return ListTile(
-            title: Text(_predictions[index].description ?? ""),
-            onTap: () async {
-              await getPlaceDetails(_predictions[index].placeId!);
-            },
-          );
-        },
-      ),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_error != null) {
+      return Center(child: Text(_error!, textAlign: TextAlign.center));
+    }
+    if (_predictions.isEmpty) {
+      final hasQuery = _queryController.text.trim().isNotEmpty;
+      return Center(
+        child: Text(
+          hasQuery && !_isLoading ? 'No places found' : '',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+      );
+    }
+    return ListView.separated(
+      itemCount: _predictions.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final prediction = _predictions[index];
+        return ListTile(
+          leading: const Icon(Icons.place_outlined),
+          title: Text(prediction.structuredFormatting?.mainText ??
+              prediction.description ??
+              ''),
+          subtitle: prediction.structuredFormatting?.secondaryText == null
+              ? null
+              : Text(prediction.structuredFormatting!.secondaryText!),
+          onTap: () => _selectPrediction(prediction),
+        );
+      },
     );
   }
 }
-
-

@@ -1,13 +1,9 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_google_map/core/config/app_constants.dart';
-import 'package:flutter_google_map/core/config/env.dart';
+import 'package:flutter_google_map/core/services/location_service.dart';
+import 'package:flutter_google_map/features/map/data/directions_service.dart';
 import 'package:flutter_google_map/features/search/presentation/pages/search_location_page.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
-import 'package:signed_spacing_flex/signed_spacing_flex.dart';
-import '../../../../core/services/location_service.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -17,150 +13,160 @@ class MapPage extends StatefulWidget {
 }
 
 class _MapPageState extends State<MapPage> {
+  static const _destinationId = MarkerId('destination');
+  static const _routeId = PolylineId('route');
+
+  final _locationService = LocationService();
+  final _directionsService = DirectionsService();
+
   GoogleMapController? _controller;
   LatLng? _currentPosition;
+  String? _locationError;
 
-  final Set<Polyline> _polyLines = {};
-  final Set<Marker> _markers = {};
-
-  _getCurrentLocation() async {
-    LocationService locationService = LocationService();
-    Position position = await locationService.getCurrentLocation();
-    setState(() {
-      _currentPosition = LatLng(position.latitude, position.longitude);
-    });
-    _controller?.animateCamera(CameraUpdate.newLatLng(_currentPosition!));
-  }
-
-  void addMarker(LatLng destination) {
-    _markers.clear();
-    _markers.add(
-        const Marker(markerId: MarkerId('destination'), position: LatLng(0,0)));
-    _markers.removeWhere((m) => m.markerId.value == 'destination');
-    _markers.add(Marker(markerId: const MarkerId('destination'), position: destination));
-    setState(() {});
-  }
-
-  void getDirections(LatLng origin, LatLng destination) async {
-    var url =
-        'https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&mode=driving&key=${Env.googleApiKey}';
-
-    var response = await http.get(Uri.parse(url));
-    var json = jsonDecode(response.body);
-
-    if (json["routes"] != null && json["routes"].isNotEmpty) {
-      var points = json["routes"][0]["overview_polyline"]["points"];
-      var polylineCoordinates = _decodePolyline(points);
-
-      setState(() {
-        _polyLines.clear();
-        _polyLines.add(Polyline(
-          polylineId: const PolylineId('route'),
-          points: polylineCoordinates,
-          color: kDefaultThemeColor,
-          width: 6,
-        ));
-      });
-    }
-  }
-
-  // Decode polyline points
-  List<LatLng> _decodePolyline(String encoded) {
-    List<LatLng> points = [];
-    int index = 0, len = encoded.length;
-    int lat = 0, lng = 0;
-
-    while (index < len) {
-      int b, shift = 0, result = 0;
-      do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result |= (b & 0x1F) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-      int dLat = (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
-      lat += dLat;
-
-      shift = 0;
-      result = 0;
-      do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result |= (b & 0x1F) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-      int dLng = (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
-      lng += dLng;
-
-      points.add(LatLng(lat / 1E5, lng / 1E5));
-    }
-    return points;
-  }
+  Set<Marker> _markers = {};
+  Set<Polyline> _polylines = {};
 
   @override
   void initState() {
     super.initState();
-    _getCurrentLocation();
+    _loadCurrentLocation();
   }
 
   @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadCurrentLocation() async {
+    setState(() => _locationError = null);
+    try {
+      final position = await _locationService.getCurrentLocation();
+      if (!mounted) return;
+      final latLng = LatLng(position.latitude, position.longitude);
+      setState(() => _currentPosition = latLng);
+      _controller?.animateCamera(CameraUpdate.newLatLng(latLng));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _locationError = e.toString());
+    }
+  }
+
+  Future<void> _searchDestination() async {
+    final destination = await Navigator.push<LatLng>(
+      context,
+      MaterialPageRoute(builder: (_) => const SearchLocationPage()),
+    );
+    if (destination == null || !mounted) return;
+
+    setState(() {
+      _markers = {Marker(markerId: _destinationId, position: destination)};
+      _polylines = {};
+    });
+    await _showRoute(_currentPosition!, destination);
+  }
+
+  Future<void> _showRoute(LatLng origin, LatLng destination) async {
+    try {
+      final points = await _directionsService.getRoute(origin, destination);
+      if (!mounted) return;
+      setState(() {
+        _polylines = {
+          Polyline(
+            polylineId: _routeId,
+            points: points,
+            color: kDefaultThemeColor,
+            width: 6,
+          ),
+        };
+      });
+      _controller?.animateCamera(
+        CameraUpdate.newLatLngBounds(_boundsOf([origin, destination]), 64),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Could not get directions: $e')));
+    }
+  }
+
+  LatLngBounds _boundsOf(List<LatLng> points) {
+    final lats = points.map((p) => p.latitude);
+    final lngs = points.map((p) => p.longitude);
+    return LatLngBounds(
+      southwest: LatLng(lats.reduce(_min), lngs.reduce(_min)),
+      northeast: LatLng(lats.reduce(_max), lngs.reduce(_max)),
+    );
+  }
+
+  static double _min(double a, double b) => a < b ? a : b;
+  static double _max(double a, double b) => a > b ? a : b;
+
+  @override
   Widget build(BuildContext context) {
+    final position = _currentPosition;
+
     return Scaffold(
       appBar: AppBar(
         elevation: 2,
         title: const Text('Google Map Demo'),
       ),
       body: SafeArea(
-        child: _currentPosition == null
-            ? const Center(child: CircularProgressIndicator())
-            : SignedSpacingColumn(
-                spacing: -130, // button height + bottom padding
-                stackingOrder: StackingOrder.lastOnTop,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: GoogleMap(
-                      onMapCreated: (controller) {
-                        _controller = controller;
-                      },
-                      initialCameraPosition:
-                          CameraPosition(target: _currentPosition!, zoom: 14),
-                      polylines: _polyLines,
-                      markers: _markers,
-                      myLocationEnabled: true,
-                      myLocationButtonEnabled: true,
-                    ),
-                  ),
-                  Container(
-                    margin: const EdgeInsets.fromLTRB(0, 0, 6, 75),
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        LatLng? destination = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const SearchLocationPage(),
-                          ),
-                        );
-                        if (destination != null) {
-                          addMarker(destination);
-                          getDirections(_currentPosition!, destination);
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        shape: const CircleBorder(),
-                        padding: const EdgeInsets.all(15),
-                        backgroundColor: Colors.white,
-                      ),
-                      child: Icon(
-                        Icons.search,
-                        color: Colors.black.withOpacity(0.65),
-                      ),
-                    ),
+        child: position != null
+            ? GoogleMap(
+                onMapCreated: (controller) => _controller = controller,
+                initialCameraPosition:
+                    CameraPosition(target: position, zoom: kDefaultZoom),
+                polylines: _polylines,
+                markers: _markers,
+                myLocationEnabled: true,
+                myLocationButtonEnabled: true,
+                // Keep the map's own controls clear of the search button.
+                padding: const EdgeInsets.only(bottom: 80),
+              )
+            : _locationError != null
+                ? _LocationError(
+                    message: _locationError!,
+                    onRetry: _loadCurrentLocation,
                   )
-                ],
-              ),
+                : const Center(child: CircularProgressIndicator()),
       ),
+      floatingActionButton: position == null
+          ? null
+          : FloatingActionButton(
+              onPressed: _searchDestination,
+              tooltip: 'Search destination',
+              shape: const CircleBorder(),
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black54,
+              child: const Icon(Icons.search),
+            ),
     );
   }
 }
 
+class _LocationError extends StatelessWidget {
+  const _LocationError({required this.message, required this.onRetry});
 
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.location_off, size: 48),
+            const SizedBox(height: 12),
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            FilledButton(onPressed: onRetry, child: const Text('Retry')),
+          ],
+        ),
+      ),
+    );
+  }
+}

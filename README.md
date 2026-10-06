@@ -15,19 +15,26 @@ A simple Flutter demo showcasing Google Maps, current location, place autocomple
 lib/
   core/
     config/
-      app_constants.dart         # API key, theme, shared UI constants
+      app_constants.dart         # Theme and shared UI constants
+      env.dart                   # Reads GOOGLE_API_KEY from .env
     services/
       location_service.dart      # Location permission + current position
+    utils/
+      polyline_decoder.dart      # Decodes Google encoded polylines
 
   features/
     map/
+      data/
+        directions_service.dart  # Directions API → route points
       presentation/
         pages/
-          map_page.dart         # Main map page (markers, polylines)
+          map_page.dart          # Main map page (markers, polylines)
     search/
+      data/
+        places_service.dart      # Places autocomplete + place details
       presentation/
         pages/
-          search_location_page.dart  # Autocomplete + place details
+          search_location_page.dart  # Search UI, pops with selected LatLng
 
   main.dart                      # App entry, theme, route to MapPage
 ```
@@ -37,7 +44,7 @@ lib/
 2. Create an `.env` file in project root (same level as `pubspec.yaml`):
 
 ```bash
-cp .env.example .env # if available, otherwise create manually
+cp .env.example .env
 ```
 
 Put your Google key there (enable Maps, Places, Directions):
@@ -67,5 +74,8 @@ flutter run
 - The route polyline is fetched via the Directions API and decoded client-side
 - `LocationService` wraps permission checks using the `location` and `geolocator` packages
 
-### 📂 Legacy Cleanup
-Replaced previous `lib/screens/` and `lib/services/` with modular `core/` and `features/` directories.
+### 🧪 Tests
+
+```bash
+flutter test
+```
